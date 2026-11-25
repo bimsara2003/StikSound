@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use stiksound_audio_engine::{probe_audio, AudioProbeInfo};
 use stiksound_image_engine::{probe_image, ImageProbeInfo};
-use stiksound_project_store::atomic_publish_file;
+use stiksound_project_store::{atomic_publish_file, sanitize_file_name};
+
+#[cfg(target_os = "android")]
+mod mobile_share;
 use stiksound_video_engine::{run_ffmpeg_mux, VideoContainerProfile, VideoMuxRequest};
 use url::Url;
 
@@ -227,24 +230,7 @@ fn cmd_save_export_to_downloads(
 
 #[tauri::command]
 fn cmd_copy_artifact_to_clipboard(file_name: String, bytes: Vec<u8>) -> Result<String, String> {
-    let raw_name = PathBuf::from(&file_name)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "Invalid file name".to_string())?
-        .to_string();
-    let safe_name: String = raw_name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if safe_name.is_empty() {
-        return Err("Empty sanitized file name".to_string());
-    }
+    let safe_name = sanitize_file_name(&file_name)?;
 
     let clipboard_dir = std::env::temp_dir().join("StikSoundClipboard");
     let dest = clipboard_dir.join(&safe_name);
@@ -305,15 +291,28 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     ensure_isolated_webview2_data_dir();
 
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            cmd_probe_image,
-            cmd_probe_audio,
-            cmd_render_video,
-            cmd_save_export_to_downloads,
-            cmd_copy_artifact_to_clipboard,
-            cmd_fetch_myinstants
-        ])
+    let builder = tauri::Builder::default();
+
+    #[cfg(not(target_os = "android"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        cmd_probe_image,
+        cmd_probe_audio,
+        cmd_render_video,
+        cmd_save_export_to_downloads,
+        cmd_copy_artifact_to_clipboard,
+        cmd_fetch_myinstants
+    ]);
+
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(mobile_share::init()).invoke_handler(tauri::generate_handler![
+        cmd_probe_image,
+        cmd_probe_audio,
+        cmd_fetch_myinstants,
+        mobile_share::cmd_share_file,
+        mobile_share::cmd_save_to_downloads
+    ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running StikSound desktop application");
 }

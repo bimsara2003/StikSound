@@ -19,6 +19,22 @@ pub enum ProjectStoreError {
     Io(#[from] std::io::Error),
 }
 
+/// Basename only, with anything outside `[A-Za-z0-9._-]` replaced by `_`, so it can't escape a target dir.
+pub fn sanitize_file_name(raw: &str) -> Result<String, String> {
+    let base = Path::new(raw)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid file name".to_string())?;
+    let safe: String = base
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .collect();
+    if safe.is_empty() {
+        return Err("Empty sanitized file name".to_string());
+    }
+    Ok(safe)
+}
+
 pub fn validate_zip_entry_path(entry: &str) -> Result<(), ProjectStoreError> {
     if entry.is_empty() || entry.contains('\\') || entry.starts_with('/') {
         return Err(ProjectStoreError::PackageInvalid(format!(
@@ -177,6 +193,15 @@ mod tests {
         }
         let err = read_zip_package(&cursor.into_inner()).unwrap_err();
         assert!(matches!(err, ProjectStoreError::PackageInvalid(_)));
+    }
+
+    #[test]
+    fn sanitize_file_name_cases() {
+        assert_eq!(sanitize_file_name("sticker.mp4").unwrap(), "sticker.mp4");
+        assert_eq!(sanitize_file_name("../../evil.mp4").unwrap(), "evil.mp4");
+        assert_eq!(sanitize_file_name("mi sticker ñ.mp4").unwrap(), "mi_sticker__.mp4");
+        assert!(sanitize_file_name("").is_err());
+        assert!(sanitize_file_name("..").is_err());
     }
 
     #[test]
