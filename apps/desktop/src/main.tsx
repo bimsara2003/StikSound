@@ -11,6 +11,7 @@ import { WebMediaEngine } from "@stiksound/media-web";
 import { MyInstantsProvider, type FetchLike } from "@stiksound/providers";
 import { StikSoundMinimalApp, type ShellBridge } from "@stiksound/ui";
 import "../../../packages/ui/src/styles.css";
+import { androidLabels, createAndroidShell, isAndroidTauri } from "./android-shell";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -89,6 +90,7 @@ const shell: ShellBridge = {
   }
 };
 
+const isAndroid = isAndroidTauri(window);
 const locale = navigator.language.toLowerCase().startsWith("es") ? "es" : "en";
 
 createRoot(document.getElementById("root")!).render(
@@ -96,8 +98,12 @@ createRoot(document.getElementById("root")!).render(
     <StikSoundMinimalApp
       engine={new DesktopMediaEngine()}
       providers={[new MyInstantsProvider(desktopFetch)]}
-      shell={shell}
+      shell={isAndroid ? createAndroidShell(invoke) : shell}
       initialLocale={locale}
+      {...(isAndroid && {
+        platform: { transparentVideo: false, myInstantsUrl: true, videoStickers: true },
+        labelOverrides: androidLabels
+      })}
     />
   </React.StrictMode>
 );
