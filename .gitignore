@@ -12,7 +12,12 @@ coverage/
 # Rust / Tauri
 target/
 .tauri/
-apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/gen/schemas/
+
+# Android signing (never commit)
+*.jks
+*.keystore
+keystore.properties
 
 # OS & Editor
 .DS_Store
