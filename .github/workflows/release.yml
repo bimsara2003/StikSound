@@ -106,8 +106,14 @@ jobs:
           name: macos-assets
           path: release-assets/*
 
+  build-android:
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ startsWith(github.ref_name, 'v') && github.ref_name || github.event.inputs.tag }}
+    secrets: inherit
+
   publish-release:
-    needs: [build-extension, build-windows, build-macos]
+    needs: [build-extension, build-windows, build-macos, build-android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -124,7 +130,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref_name, 'v') && github.ref_name || github.event.inputs.tag }}
-          name: StikSound ${{ startsWith(github.ref_name, 'v') && github.ref_name || github.event.inputs.tag }} — Windows, macOS & Chrome Extension
+          name: StikSound ${{ startsWith(github.ref_name, 'v') && github.ref_name || github.event.inputs.tag }} — Windows, macOS, Android & Chrome Extension
           generate_release_notes: true
           body: |
             ## Descargas listas para usar (sin instalar FFmpeg ni dependencias extra)
@@ -133,6 +139,7 @@ jobs:
             | --- | --- | --- |
             | **Windows 10/11 (64-bit)** | `StikSound-*-windows-x64.exe` *(portable)* o `*-setup.exe` *(instalador)* | Doble clic para abrir o instalar al instante. |
             | **macOS (Apple Silicon & Intel)** | `StikSound-*-macos-universal.dmg` o `.app.zip` | Arrastra `StikSound.app` a **Aplicaciones**. *(Si macOS muestra aviso de desarrollador no verificado: clic derecho → **Abrir**).* |
+            | **Android 10+** | `StikSound-*-android.apk` | Descarga el APK en el teléfono, ábrelo y permite **instalar apps de origen desconocido** cuando Android lo pida. |
             | **Google Chrome / Edge / Brave** | `StikSound-*-chrome-extension.zip` | Descomprime el ZIP, abre `chrome://extensions/`, activa **Modo de desarrollador** y pulsa **Cargar descomprimida** seleccionando la carpeta descomprimida. |
 
             ### Qué incluye esta versión

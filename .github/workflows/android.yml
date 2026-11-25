@@ -1,0 +1,66 @@
+name: Android
+
+on:
+  push:
+    branches: [feat/android]
+  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.0.0). When set, the APK must be signed."
+        type: string
+        required: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version || 'dev' }}
+      RELEASE: ${{ inputs.version && 'true' || 'false' }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install NDK (runner ships the Android SDK)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" > /dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - run: npm ci
+      - name: Write signing config
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cat > apps/desktop/src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          password=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+      - name: Build APK
+        working-directory: apps/desktop
+        run: |
+          if [ "$RELEASE" = "true" ] && [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Release build needs the ANDROID_KEYSTORE_* secrets"; exit 1
+          fi
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then MODE=release; FLAG=""; else MODE=debug; FLAG="--debug"; fi
+          npx tauri android build --apk --target aarch64 --target armv7 $FLAG
+          mkdir -p ../../release-assets
+          cp "src-tauri/gen/android/app/build/outputs/apk/universal/$MODE/app-universal-$MODE.apk" \
+            "../../release-assets/StikSound-${VERSION#v}-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-assets
+          path: release-assets/*
